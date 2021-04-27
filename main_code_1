@@ -1,0 +1,80 @@
+import vk_api
+from vk_api import VkUpload
+from vk_api.longpoll import VkLongPoll, VkEventType
+import random
+
+from io import BytesIO
+
+import requests
+from PIL import Image
+
+TOKEN = 'ab56ad13c4e0593b3d0082e8d03d23bbf694699acb56124e4b2ca6389c6b129bde1d40e52852d315f10a9'
+vk = vk_api.VkApi(token=TOKEN)
+longpoll = VkLongPoll(vk)
+upload = VkUpload(vk)
+
+
+def send_message(chat_id, text):
+    random_id = random.randint(0, 10000000)
+    vk.method('messages.send', {'chat_id': chat_id, 'message': text,
+                                'random_id': random_id})
+
+
+def send_message_2(chat_id, text):
+    random_id = random.randint(0, 10000000)
+    vk.method('messages.send', {'chat_id': chat_id, 'message': text,
+                                'random_id': random_id, 'attachment': ','.join(attachment)})
+
+
+def adress(msg):
+    adr = msg.strip()
+    toponym_to_find = "".join(adr)
+
+    geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
+
+    geocoder_params = {
+        "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
+        "geocode": toponym_to_find,
+        "format": "json"}
+
+    response = requests.get(geocoder_api_server, params=geocoder_params)
+
+    if not response:
+        pass
+
+    json_response = response.json()
+    toponym = json_response["response"]["GeoObjectCollection"][
+        "featureMember"][0]["GeoObject"]
+    toponym_coodrinates = toponym["Point"]["pos"]
+    toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
+
+    delta = "0.005"
+    map_params = {
+        "ll": ",".join([toponym_longitude, toponym_lattitude]),
+        "spn": ",".join([delta, delta]),
+        "l": "map"
+    }
+
+    map_api_server = "http://static-maps.yandex.ru/1.x/"
+    response = requests.get(map_api_server, params=map_params)
+
+    i = Image.open(BytesIO(
+        response.content))
+    i.convert("RGB").save("map.jpg")
+
+
+for event in longpoll.listen():
+    if event.type == VkEventType.MESSAGE_NEW:
+        if event.to_me:
+            if event.from_chat:
+                msg = event.text
+                chat_id = event.chat_id
+                if 'adress' in msg:
+                    adress(msg[7:])
+                    attachment = []
+                    image = "C:/WEB_PROJECT/map.jpg"
+                    upload_image = upload.photo_messages(photos=image)[0]
+                    attachment.append('photo{}_{}'.format(upload_image['owner_id'], upload_image['id']))
+                    send_message_2(chat_id, 'Мы получили карту вашего местоположения:')
+                else:
+                    send_message(chat_id, msg)
